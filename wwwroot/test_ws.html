@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="log"></div>
+    <script>
+        const log = (msg) => document.getElementById('log').innerHTML += msg + '<br>';
+        
+        try {
+            const pusher = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
+                cluster:          'free.blr2',
+                wsHost:           'free.blr2.piesocket.com',
+                wsPort:           443,
+                wssPort:          443,
+                forceTLS:         true,
+                enabledTransports: ['ws', 'wss'],
+                disableStats:     true
+            });
+
+            pusher.connection.bind('connected', () => {
+                log('CONNECTED');
+            });
+
+            pusher.connection.bind('error', (err) => {
+                log('ERROR: ' + JSON.stringify(err));
+            });
+
+            const channel = pusher.subscribe('incidencias-channel');
+            channel.bind('pusher:subscription_succeeded', function() {
+                log('SUBSCRIBED');
+            });
+            channel.bind('pusher:subscription_error', function(status) {
+                log('SUBSCRIPTION ERROR: ' + status);
+            });
+        } catch (e) {
+            log('EXCEPTION: ' + e.message);
+        }
+    </script>
+</body>
+</html>

@@ -1,7 +1,10 @@
 @model IEnumerable<PlataformaIncidencias.Models.Incidencia>
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 @{
     ViewData["Title"] = "Plataforma de Incidencias";
+    var pieSocketApiKey = Configuration["PieSocket:ApiKey"];
+    var pieSocketCluster = Configuration["PieSocket:ClusterId"] ?? "free.blr2";
 }
 
 <!-- RESOLUCIÓN 2: Se eligió un título definitivo que refleja las 3 funcionalidades
@@ -138,9 +141,9 @@
         }
 
         // ---- Cliente PieSocket via SDK Pusher ----
-        const pusher = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
-            cluster:          'free.blr2',
-            wsHost:           'free.blr2.piesocket.com',
+        const pusher = new Pusher('@pieSocketApiKey', {
+            cluster:          '@pieSocketCluster',
+            wsHost:           '@pieSocketCluster'+'.piesocket.com',
             wsPort:           443,
             wssPort:          443,
             forceTLS:         true,
