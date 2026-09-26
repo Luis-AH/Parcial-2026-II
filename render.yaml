@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: plataforma-incidencias
+    runtime: dotnet
+    buildCommand: dotnet publish -c Release -o out
+    startCommand: dotnet out/PlataformaIncidencias.dll
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__DefaultConnection
+        value: DataSource=app.db;Cache=Shared
+      # Las siguientes variables se configuran manualmente en el dashboard de Render:
+      # - Algolia__AppId
+      # - Algolia__WriteApiKey
+      # - Algolia__SearchApiKey
+      # - Algolia__IndexName
+      # - PieSocket__AppId
+      # - PieSocket__ApiKey
+      # - PieSocket__ApiSecret
+      # - PieSocket__ClusterId
+      # - PieSocket__Channel
+      # - ConnectionStrings__Redis
