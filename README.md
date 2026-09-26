@@ -2,6 +2,14 @@
 
 Sistema web de gestión de incidencias operativas para una red de bicicletas compartidas. Desarrollado con **ASP.NET Core MVC** e integrado con servicios en la nube para búsqueda, caché y comunicación en tiempo real.
 
+
+
+
+usuario supervisor: supervisor@bicioperaciones.com
+contraseña:Admin123!
+
+
+
 ---
 
 ## Tecnologías utilizadas
