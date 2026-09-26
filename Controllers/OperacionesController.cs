@@ -44,42 +44,64 @@ namespace PlataformaIncidencias.Controllers
 
             if (!string.IsNullOrWhiteSpace(q))
             {
-                // Búsqueda activa → Algolia (bypass de caché, resultado fresco)
-                var resultadosAlgolia = await _algolia.BuscarAsync(q);
-                if (resultadosAlgolia != null)
+                try
                 {
-                    var ids = resultadosAlgolia.Select(r => r.Id).ToList();
-                    incidencias = await _context.Incidencias
-                        .Where(i => ids.Contains(i.Id) && i.Estado == "Abierta")
-                        .ToListAsync();
-                    _logger.LogInformation("[ALGOLIA] Búsqueda '{Q}' → {Count} resultados.", q, incidencias.Count);
+                    // Búsqueda activa → Algolia
+                    var resultadosAlgolia = await _algolia.BuscarAsync(q);
+                    if (resultadosAlgolia != null)
+                    {
+                        var ids = resultadosAlgolia.Select(r => r.Id).ToList();
+                        incidencias = await _context.Incidencias
+                            .Where(i => ids.Contains(i.Id) && i.Estado == "Abierta")
+                            .ToListAsync();
+                        _logger.LogInformation("[ALGOLIA] Búsqueda '{Q}' → {Count} resultados.", q, incidencias.Count);
+                    }
+                    else
+                    {
+                        incidencias = new List<Incidencia>();
+                    }
                 }
-                else
+                catch (System.Exception ex)
                 {
-                    incidencias = new List<Incidencia>();
+                    _logger.LogError(ex, "Error conectando con Algolia");
+                    // Fallback si falla Algolia: búsqueda básica local
+                    incidencias = await _context.Incidencias
+                        .Where(i => i.Estado == "Abierta" && (i.Estacion.Contains(q) || i.Descripcion.Contains(q)))
+                        .ToListAsync();
                 }
             }
             else
             {
-                // Sin búsqueda → Redis primero, SQLite como fallback
-                var cached = await _cache.GetStringAsync(CacheKey);
-                if (cached != null)
+                try
                 {
-                    incidencias = JsonSerializer.Deserialize<List<Incidencia>>(cached) ?? new List<Incidencia>();
-                    _logger.LogInformation("[REDIS] HIT — {Count} incidencias desde caché.", incidencias.Count);
+                    // Sin búsqueda → Redis primero
+                    var cached = await _cache.GetStringAsync(CacheKey);
+                    if (cached != null)
+                    {
+                        incidencias = JsonSerializer.Deserialize<List<Incidencia>>(cached) ?? new List<Incidencia>();
+                        _logger.LogInformation("[REDIS] HIT — {Count} incidencias desde caché.", incidencias.Count);
+                    }
+                    else
+                    {
+                        incidencias = await _context.Incidencias
+                            .Where(i => i.Estado == "Abierta")
+                            .ToListAsync();
+
+                        await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(incidencias),
+                            new DistributedCacheEntryOptions
+                            {
+                                AbsoluteExpirationRelativeToNow = System.TimeSpan.FromSeconds(60)
+                            });
+                        _logger.LogInformation("[SQLITE] MISS — {Count} incidencias guardadas en Redis.", incidencias.Count);
+                    }
                 }
-                else
+                catch (System.Exception ex)
                 {
+                    _logger.LogError(ex, "Error conectando con Redis Cache");
+                    // Fallback si falla Redis: ir directo a SQLite
                     incidencias = await _context.Incidencias
                         .Where(i => i.Estado == "Abierta")
                         .ToListAsync();
-
-                    await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(incidencias),
-                        new DistributedCacheEntryOptions
-                        {
-                            AbsoluteExpirationRelativeToNow = System.TimeSpan.FromSeconds(60)
-                        });
-                    _logger.LogInformation("[SQLITE] MISS — {Count} incidencias guardadas en Redis.", incidencias.Count);
                 }
             }
 
@@ -96,15 +118,22 @@ namespace PlataformaIncidencias.Controllers
                 incidencia.Estado = "Cerrada";
                 await _context.SaveChangesAsync();
 
-                // 1. Invalidar caché Redis
-                await _cache.RemoveAsync(CacheKey);
-                // 2. Eliminar del índice Algolia
-                await _algolia.EliminarDelIndiceAsync(id);
-                // 3. Publicar evento WebSocket via PieSocket → todos los clientes actualizan su UI
-                await _pieSocket.PublicarIncidenciaCerradaAsync(id);
+                try
+                {
+                    // 1. Invalidar caché Redis
+                    await _cache.RemoveAsync(CacheKey);
+                    // 2. Eliminar del índice Algolia
+                    await _algolia.EliminarDelIndiceAsync(id);
+                    // 3. Publicar evento WebSocket via PieSocket → todos los clientes actualizan su UI
+                    await _pieSocket.PublicarIncidenciaCerradaAsync(id);
 
-                _logger.LogInformation(
-                    "[CERRAR] Id={Id}: BD cerrada, Redis invalidado, Algolia limpiado, PieSocket notificado.", id);
+                    _logger.LogInformation(
+                        "[CERRAR] Id={Id}: BD cerrada, Redis invalidado, Algolia limpiado, PieSocket notificado.", id);
+                }
+                catch (System.Exception ex)
+                {
+                    _logger.LogError(ex, "[CERRAR] Error al notificar/limpiar servicios externos para la incidencia {Id}", id);
+                }
             }
             return Ok();
         }
