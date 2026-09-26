@@ -146,19 +146,47 @@
         var wsUrl = `wss://${clusterId}.piesocket.com/v3/${canalReal}?api_key=${apiKey}&notify_self=1`;
         var socket = new WebSocket(wsUrl);
 
+        // Agregamos un indicador visual de conexión para debug
+        const statsEl = document.querySelector('.stats');
+        const connStatus = document.createElement('span');
+        connStatus.style.marginLeft = '15px';
+        connStatus.style.fontSize = '12px';
+        connStatus.textContent = "🟠 Conectando WS...";
+        statsEl.appendChild(connStatus);
+
         socket.onopen = function() {
             console.log('[PIESOCKET] Conectado nativamente al canal:', canalReal);
+            connStatus.textContent = "🟢 WS Conectado";
         };
 
         socket.onmessage = function(event) {
             console.log('[PIESOCKET] Mensaje crudo recibido:', event.data);
             try {
-                var payload = JSON.parse(event.data);
+                // El servidor de PieSocket podría mandar eventos propios o nuestro mensaje
+                var rawPayload = JSON.parse(event.data);
                 
-                // PieSocket REST API encapsula el mensaje en la propiedad "event" y "data"
-                if (payload.event === "IncidenciaActualizada" && payload.data) {
-                    const incidenciaId = payload.data.Id || payload.data.id;
-                    eliminarFila(incidenciaId);
+                // Si PieSocket manda errores del sistema (ej. API Key inválida)
+                if (rawPayload.event === "system:error") {
+                    connStatus.textContent = "🔴 WS Error: " + rawPayload.data;
+                    console.error("PieSocket System Error:", rawPayload.data);
+                    return;
+                }
+
+                // Extraemos nuestro objeto "message" si viene encapsulado por PieSocket, o tomamos el root
+                var myMessage = rawPayload.message ? rawPayload.message : rawPayload;
+                
+                // A veces PieSocket manda "message" como string JSON escapado
+                if (typeof myMessage === 'string') {
+                    myMessage = JSON.parse(myMessage);
+                }
+
+                if ((myMessage.event === "IncidenciaActualizada" || myMessage.Event === "IncidenciaActualizada") && myMessage.data) {
+                    var dataObj = typeof myMessage.data === 'string' ? JSON.parse(myMessage.data) : myMessage.data;
+                    const incidenciaId = dataObj.Id || dataObj.id;
+                    if (incidenciaId) {
+                        eliminarFila(incidenciaId);
+                        connStatus.textContent = "⚡ WS Evento Recibido: " + incidenciaId;
+                    }
                 }
             } catch(e) {
                 console.error('[PIESOCKET] Error al parsear mensaje:', e);
@@ -167,6 +195,11 @@
 
         socket.onerror = function(error) {
             console.error('[PIESOCKET] Error WebSocket:', error);
+            connStatus.textContent = "🔴 WS Error de red";
+        };
+
+        socket.onclose = function() {
+            connStatus.textContent = "🔴 WS Desconectado";
         };
     </script>
 }
