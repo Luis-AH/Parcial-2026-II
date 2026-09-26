@@ -188,3 +188,15 @@ git log --graph --oneline --all
 | Claves secretas nunca al frontend | `WriteApiKey` de Algolia y `ApiSecret` de PieSocket solo en `IConfiguration` |
 | Payload camelCase en WebSocket | `new { id }` — la propiedad en minúscula coincide con `data.id` en JavaScript |
 | Sin HTTPS redirect en Render | El reverse proxy de Render maneja TLS; la app solo escucha en HTTP en `0.0.0.0:$PORT` |
+
+FUNCIONALIDAD DEL PIESOCKET
+
+<img width="1917" height="1012" alt="image" src="https://github.com/user-attachments/assets/53fc9ad7-44a7-43e7-bf07-71bfab01da4a" />
+<img width="1917" height="675" alt="image" src="https://github.com/user-attachments/assets/3f53df1a-e0ca-40f0-930c-b7916e7c1d95" />
+
+
+FUNCIONALIDAD DE ALGOLIA 
+<img width="885" height="452" alt="image" src="https://github.com/user-attachments/assets/7b52fc05-221e-4286-aeeb-faee8e0dfff4" />
+<img width="925" height="656" alt="image" src="https://github.com/user-attachments/assets/8a70f90e-c4ce-4f27-8e72-0c8c4dd27e77" />
+
+
