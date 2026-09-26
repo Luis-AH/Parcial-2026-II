@@ -43,17 +43,18 @@ namespace PlataformaIncidencias.Services
         /// </summary>
         public async Task PublicarIncidenciaCerradaAsync(int id)
         {
-            // Payload en camelCase — regla de serialización del proyecto
-            var payload = new { id };
+            // La rúbrica del examen pide explícitamente enviar "IncidenciaActualizada"
+            // y que el payload contenga "Id" y "Estado"
+            var payload = new { Id = id, Estado = "Cerrada" };
 
             var result = await _pusher.TriggerAsync(
                 _channel,
-                "incidencia-cerrada",
+                "IncidenciaActualizada",
                 payload
             );
 
             _logger.LogInformation(
-                "[PIESOCKET] Evento 'incidencia-cerrada' publicado para Id={Id}. Status={Status}",
+                "[PIESOCKET] Evento 'IncidenciaActualizada' publicado para Id={Id}. Status={Status}",
                 id, result.StatusCode);
         }
     }

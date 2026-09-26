@@ -135,6 +135,7 @@
 
         // ---- Cliente PieSocket via SDK Pusher ----
         const pusher = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
+            cluster:          'free.blr2',
             wsHost:           'free.blr2.piesocket.com',
             wsPort:           443,
             wssPort:          443,
@@ -145,9 +146,11 @@
 
         const channel = pusher.subscribe('incidencias-channel');
 
-        channel.bind('incidencia-cerrada', function(data) {
+        channel.bind('IncidenciaActualizada', function(data) {
             console.log('[PIESOCKET] Evento recibido:', data);
-            eliminarFila(data.id);
+            // Dependiendo del serializador JSON, puede llegar como Id o id
+            const incidenciaId = data.Id || data.id;
+            eliminarFila(incidenciaId);
         });
     </script>
 }
