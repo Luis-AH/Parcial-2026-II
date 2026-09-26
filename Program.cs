@@ -5,7 +5,7 @@ using PlataformaIncidencias.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Render.com asigna el puerto via la variable de entorno PORT.
+// Render.com asigna el puerto via la variable de entorno PORT
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
@@ -26,10 +26,13 @@ builder.Services.AddControllersWithViews()
             System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
 
-// Algolia: búsqueda de texto completo (server-side only)
+// Algolia: búsqueda de texto completo (Write Key solo en servidor)
 builder.Services.AddSingleton<AlgoliaService>();
 
-// Redis: caché distribuida del listado de incidencias
+// PieSocket: WebSockets en tiempo real (Api Secret solo en servidor)
+builder.Services.AddSingleton<PieSocketService>();
+
+// Redis: caché distribuida (con fallback en memoria si no hay conexión)
 var redisConnection = builder.Configuration.GetConnectionString("Redis");
 if (!string.IsNullOrEmpty(redisConnection))
 {
@@ -41,7 +44,6 @@ if (!string.IsNullOrEmpty(redisConnection))
 }
 else
 {
-    // Fallback en memoria para desarrollo local sin Redis
     builder.Services.AddDistributedMemoryCache();
 }
 
@@ -57,6 +59,7 @@ else
     app.UseHsts();
 }
 
+// En Render el TLS lo maneja el reverse proxy, no la app
 if (!app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
@@ -74,6 +77,7 @@ app.MapControllerRoute(
 app.MapRazorPages()
    .WithStaticAssets();
 
+// Seeder: crea BD y datos iniciales (GUIDs fijos para sobrevivir reinicios de Render)
 using (var scope = app.Services.CreateScope())
 {
     var services    = scope.ServiceProvider;

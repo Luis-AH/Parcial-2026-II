@@ -19,6 +19,7 @@ namespace PlataformaIncidencias.Controllers
         private readonly ApplicationDbContext _context;
         private readonly AlgoliaService _algolia;
         private readonly IDistributedCache _cache;
+        private readonly PieSocketService _pieSocket;
         private readonly ILogger<OperacionesController> _logger;
 
         private const string CacheKey = "incidencias_abiertas";
@@ -27,12 +28,14 @@ namespace PlataformaIncidencias.Controllers
             ApplicationDbContext context,
             AlgoliaService algolia,
             IDistributedCache cache,
+            PieSocketService pieSocket,
             ILogger<OperacionesController> logger)
         {
-            _context = context;
-            _algolia = algolia;
-            _cache   = cache;
-            _logger  = logger;
+            _context   = context;
+            _algolia   = algolia;
+            _cache     = cache;
+            _pieSocket = pieSocket;
+            _logger    = logger;
         }
 
         public async Task<IActionResult> Incidencias(string? q)
@@ -41,7 +44,7 @@ namespace PlataformaIncidencias.Controllers
 
             if (!string.IsNullOrWhiteSpace(q))
             {
-                // Búsqueda activa: usar Algolia (ignora caché, resultado fresco)
+                // Búsqueda activa → Algolia (bypass de caché, resultado fresco)
                 var resultadosAlgolia = await _algolia.BuscarAsync(q);
                 if (resultadosAlgolia != null)
                 {
@@ -58,7 +61,7 @@ namespace PlataformaIncidencias.Controllers
             }
             else
             {
-                // Sin búsqueda: intentar caché Redis primero
+                // Sin búsqueda → Redis primero, SQLite como fallback
                 var cached = await _cache.GetStringAsync(CacheKey);
                 if (cached != null)
                 {
@@ -76,7 +79,7 @@ namespace PlataformaIncidencias.Controllers
                         {
                             AbsoluteExpirationRelativeToNow = System.TimeSpan.FromSeconds(60)
                         });
-                    _logger.LogInformation("[SQLITE] MISS — {Count} incidencias cargadas y guardadas en Redis.", incidencias.Count);
+                    _logger.LogInformation("[SQLITE] MISS — {Count} incidencias guardadas en Redis.", incidencias.Count);
                 }
             }
 
@@ -93,12 +96,15 @@ namespace PlataformaIncidencias.Controllers
                 incidencia.Estado = "Cerrada";
                 await _context.SaveChangesAsync();
 
-                // Invalidar caché Redis
+                // 1. Invalidar caché Redis
                 await _cache.RemoveAsync(CacheKey);
-                // Eliminar del índice Algolia
+                // 2. Eliminar del índice Algolia
                 await _algolia.EliminarDelIndiceAsync(id);
+                // 3. Publicar evento WebSocket via PieSocket → todos los clientes actualizan su UI
+                await _pieSocket.PublicarIncidenciaCerradaAsync(id);
 
-                _logger.LogInformation("[CERRAR] Incidencia {Id}: BD actualizada, Redis invalidado, Algolia limpiado.", id);
+                _logger.LogInformation(
+                    "[CERRAR] Id={Id}: BD cerrada, Redis invalidado, Algolia limpiado, PieSocket notificado.", id);
             }
             return Ok();
         }

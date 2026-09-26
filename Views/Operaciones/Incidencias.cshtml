@@ -14,6 +14,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Pusher JS SDK — compatible con PieSocket WebSockets -->
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <style>
         /* Paleta de colores sólidos, sin degradados */
         :root {
@@ -250,9 +252,10 @@
 
     <main>
         <!-- Esta es la línea que forzará el conflicto entre ramas -->
-        <!-- RESOLUCIÓN 1: Se conservó el título de la Rama A (Algolia) sobre la Rama B (Redis).
-             Justificación: el form de búsqueda de Algolia es más completo que el input estático de Redis. -->
-        <h1>Incidencias abiertas encontradas</h1>
+        <!-- RESOLUCIÓN 2: Se eligió un título definitivo que refleja las 3 funcionalidades
+             integradas: búsqueda (Algolia), caché (Redis) y tiempo real (PieSocket).
+             Se descartó el h1 de la Rama C ("en tiempo real") a favor de uno más descriptivo. -->
+        <h1>Panel de Incidencias Abiertas</h1>
         
         <div class="controls">
             <form method="get" action="/Operaciones/Incidencias" style="display:contents;">
@@ -343,6 +346,10 @@
         });
 
         // Llamada asíncrona real para cerrar incidencia
+        // El servidor cierra en BD y publica en PieSocket.
+        // La fila desaparece tanto para quien pulsa el botón
+        // como para cualquier otra pestaña/usuario conectado
+        // (gracias al listener de PieSocket de abajo).
         async function cerrarIncidencia(id) {
             const btn = document.querySelector(`#row-${id} button`);
             btn.textContent = "Procesando...";
@@ -355,25 +362,56 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
                 
-                if (response.ok) {
-                    const row = document.getElementById(`row-${id}`);
-                    row.style.transition = "opacity 0.4s ease";
-                    row.style.opacity = "0";
-                    setTimeout(() => {
-                        row.remove();
-                        // Refrescar filtro
-                        document.getElementById('search-input').dispatchEvent(new Event('input'));
-                    }, 400);
-                } else {
+                if (!response.ok) {
                     alert("Error al cerrar incidencia");
                     btn.textContent = "Cerrar";
                     btn.style.opacity = "1";
                     btn.disabled = false;
                 }
+                // Si OK: el evento llegará via PieSocket y removerá la fila
             } catch (e) {
                 console.error(e);
             }
         }
+
+        // Helper para animar la desaparición de una fila
+        function eliminarFila(id) {
+            const row = document.getElementById(`row-${id}`);
+            if (!row) return;
+            row.style.transition = "opacity 0.4s ease";
+            row.style.opacity = "0";
+            setTimeout(() => {
+                row.remove();
+                document.getElementById('search-input').dispatchEvent(new Event('input'));
+            }, 400);
+        }
+
+        // ---- Cliente PieSocket via SDK Pusher ----
+        // API Key pública (safe in browser), el Secret NUNCA llega aquí
+        const pusher = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
+            wsHost:           'free.blr2.piesocket.com',
+            wsPort:           443,
+            wssPort:          443,
+            forceTLS:         true,
+            enabledTransports: ['ws', 'wss'],
+            disableStats:     true
+        });
+
+        const channel = pusher.subscribe('incidencias-channel');
+
+        channel.bind('incidencia-cerrada', function(data) {
+            console.log('[PIESOCKET] Evento recibido:', data);
+            // data.id viene en camelCase desde el servidor
+            eliminarFila(data.id);
+        });
+
+        pusher.connection.bind('connected', () => {
+            console.log('[PIESOCKET] Conectado al canal en tiempo real.');
+        });
+
+        pusher.connection.bind('error', (err) => {
+            console.error('[PIESOCKET] Error de conexión:', err);
+        });
     </script>
 </body>
 </html>
