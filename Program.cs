@@ -12,11 +12,22 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddEntityFrameworkStores<ApplicationDbContext>();
+
 builder.Services.AddControllersWithViews()
-    .AddJsonOptions(options => 
+    .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
+
+// Redis: caché distribuida para el listado general de incidencias
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("Connection string 'Redis' not found.");
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnection;
+    options.InstanceName = "PlataformaIncidencias:"; // namespace para no chocar con otras apps
+});
 
 var app = builder.Build();
 
@@ -28,7 +39,6 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
