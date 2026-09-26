@@ -6,11 +6,9 @@ using PlataformaIncidencias.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Render.com asigna el puerto via la variable de entorno PORT.
-// Esto permite que el app se ejecute correctamente en producción.
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-// Add services to the container.
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
@@ -28,8 +26,24 @@ builder.Services.AddControllersWithViews()
             System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
 
-// Algolia: registrado como Singleton (cliente HTTP reutilizable)
+// Algolia: búsqueda de texto completo (server-side only)
 builder.Services.AddSingleton<AlgoliaService>();
+
+// Redis: caché distribuida del listado de incidencias
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrEmpty(redisConnection))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+        options.InstanceName  = "PlataformaIncidencias:";
+    });
+}
+else
+{
+    // Fallback en memoria para desarrollo local sin Redis
+    builder.Services.AddDistributedMemoryCache();
+}
 
 var app = builder.Build();
 
@@ -43,8 +57,6 @@ else
     app.UseHsts();
 }
 
-// En Render no se usa HTTPS directo (el reverse proxy lo maneja),
-// por eso solo aplicamos redirección en desarrollo.
 if (!app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
@@ -62,13 +74,11 @@ app.MapControllerRoute(
 app.MapRazorPages()
    .WithStaticAssets();
 
-// DataSeeder: crea la BD y datos iniciales al arrancar.
-// Usa EnsureCreated + GUIDs fijos para sobrevivir reinicios del disco de Render.
 using (var scope = app.Services.CreateScope())
 {
     var services    = scope.ServiceProvider;
     var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
-    var algolia = services.GetRequiredService<AlgoliaService>();
+    var algolia     = services.GetRequiredService<AlgoliaService>();
     await DataSeeder.SeedDataAsync(services, userManager, algolia);
 }
 

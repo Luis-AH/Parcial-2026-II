@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using PlataformaIncidencias.Data;
 using PlataformaIncidencias.Models;
 using PlataformaIncidencias.Services;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace PlataformaIncidencias.Controllers
@@ -16,47 +18,69 @@ namespace PlataformaIncidencias.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly AlgoliaService _algolia;
+        private readonly IDistributedCache _cache;
         private readonly ILogger<OperacionesController> _logger;
+
+        private const string CacheKey = "incidencias_abiertas";
 
         public OperacionesController(
             ApplicationDbContext context,
             AlgoliaService algolia,
+            IDistributedCache cache,
             ILogger<OperacionesController> logger)
         {
             _context = context;
             _algolia = algolia;
-            _logger = logger;
+            _cache   = cache;
+            _logger  = logger;
         }
 
         public async Task<IActionResult> Incidencias(string? q)
         {
             List<Incidencia> incidencias;
 
-            var resultadosAlgolia = await _algolia.BuscarAsync(q);
-
-            if (resultadosAlgolia != null)
+            if (!string.IsNullOrWhiteSpace(q))
             {
-                // Algolia devolvió resultados: cruzar con SQLite para tener datos actualizados
-                var ids = resultadosAlgolia.Select(r => r.Id).ToList();
-                incidencias = await _context.Incidencias
-                    .Where(i => ids.Contains(i.Id) && i.Estado == "Abierta")
-                    .ToListAsync();
-
-                _logger.LogInformation("[ALGOLIA] Búsqueda '{Query}' → {Count} resultados.", q, incidencias.Count);
+                // Búsqueda activa: usar Algolia (ignora caché, resultado fresco)
+                var resultadosAlgolia = await _algolia.BuscarAsync(q);
+                if (resultadosAlgolia != null)
+                {
+                    var ids = resultadosAlgolia.Select(r => r.Id).ToList();
+                    incidencias = await _context.Incidencias
+                        .Where(i => ids.Contains(i.Id) && i.Estado == "Abierta")
+                        .ToListAsync();
+                    _logger.LogInformation("[ALGOLIA] Búsqueda '{Q}' → {Count} resultados.", q, incidencias.Count);
+                }
+                else
+                {
+                    incidencias = new List<Incidencia>();
+                }
             }
             else
             {
-                // Sin búsqueda: consulta normal a SQLite
-                incidencias = await _context.Incidencias
-                    .Where(i => i.Estado == "Abierta")
-                    .ToListAsync();
+                // Sin búsqueda: intentar caché Redis primero
+                var cached = await _cache.GetStringAsync(CacheKey);
+                if (cached != null)
+                {
+                    incidencias = JsonSerializer.Deserialize<List<Incidencia>>(cached) ?? new List<Incidencia>();
+                    _logger.LogInformation("[REDIS] HIT — {Count} incidencias desde caché.", incidencias.Count);
+                }
+                else
+                {
+                    incidencias = await _context.Incidencias
+                        .Where(i => i.Estado == "Abierta")
+                        .ToListAsync();
 
-                _logger.LogInformation("[SQLITE] Carga general → {Count} incidencias.", incidencias.Count);
+                    await _cache.SetStringAsync(CacheKey, JsonSerializer.Serialize(incidencias),
+                        new DistributedCacheEntryOptions
+                        {
+                            AbsoluteExpirationRelativeToNow = System.TimeSpan.FromSeconds(60)
+                        });
+                    _logger.LogInformation("[SQLITE] MISS — {Count} incidencias cargadas y guardadas en Redis.", incidencias.Count);
+                }
             }
 
-            // Pasar la query a la vista para mantener el texto en el buscador
             ViewBag.Query = q;
-
             return View(incidencias);
         }
 
@@ -69,10 +93,12 @@ namespace PlataformaIncidencias.Controllers
                 incidencia.Estado = "Cerrada";
                 await _context.SaveChangesAsync();
 
-                // Eliminar del índice de Algolia para que no aparezca en búsquedas futuras
+                // Invalidar caché Redis
+                await _cache.RemoveAsync(CacheKey);
+                // Eliminar del índice Algolia
                 await _algolia.EliminarDelIndiceAsync(id);
 
-                _logger.LogInformation("[CERRAR] Incidencia {Id} cerrada y eliminada de Algolia.", id);
+                _logger.LogInformation("[CERRAR] Incidencia {Id}: BD actualizada, Redis invalidado, Algolia limpiado.", id);
             }
             return Ok();
         }
