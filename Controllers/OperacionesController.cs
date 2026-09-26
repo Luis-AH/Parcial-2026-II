@@ -1,27 +1,40 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PlataformaIncidencias.Data;
+using PlataformaIncidencias.Models;
+using PlataformaIncidencias.Services;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace PlataformaIncidencias.Controllers
 {
-    // Solo usuarios autenticados (supervisor)
     [Authorize]
     public class OperacionesController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly PieSocketService _pieSocket;
+        private readonly ILogger<OperacionesController> _logger;
 
-        public OperacionesController(ApplicationDbContext context)
+        public OperacionesController(
+            ApplicationDbContext context,
+            PieSocketService pieSocket,
+            ILogger<OperacionesController> logger)
         {
-            _context = context;
+            _context   = context;
+            _pieSocket = pieSocket;
+            _logger    = logger;
         }
 
         public async Task<IActionResult> Incidencias()
         {
-            // Base inicial: solo mostrar todas (después en las ramas A y B se agrega Algolia y Redis)
-            var incidencias = await _context.Incidencias.ToListAsync();
+            var incidencias = await _context.Incidencias
+                .Where(i => i.Estado == "Abierta")
+                .ToListAsync();
+
+            _logger.LogInformation("[SQLITE] {Count} incidencias abiertas cargadas.", incidencias.Count);
             return View(incidencias);
         }
 
@@ -33,7 +46,12 @@ namespace PlataformaIncidencias.Controllers
             {
                 incidencia.Estado = "Cerrada";
                 await _context.SaveChangesAsync();
-                // Aquí más adelante se publicará a RabbitMQ y/o PieHost
+
+                // Publicar evento WebSocket via PieSocket para que todos los clientes
+                // conectados eliminen la fila en tiempo real sin recargar la página
+                await _pieSocket.PublicarIncidenciaCerradaAsync(id);
+
+                _logger.LogInformation("[PIESOCKET] Evento publicado para incidencia {Id}.", id);
             }
             return Ok();
         }
