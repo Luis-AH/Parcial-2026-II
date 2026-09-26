@@ -250,12 +250,19 @@
 
     <main>
         <!-- Esta es la línea que forzará el conflicto entre ramas -->
-        <h1>Incidencias abiertas</h1>
+        <h1>Incidencias abiertas encontradas</h1>
         
         <div class="controls">
-            <div class="search-box">
-                <input id="search-input" type="text" placeholder="Buscar por nombre de estación o descripción...">
-            </div>
+            <form method="get" action="/Operaciones/Incidencias" style="display:contents;">
+                <div class="search-box">
+                    <input id="search-input" 
+                           type="text" 
+                           name="q"
+                           value="@ViewBag.Query"
+                           placeholder="Buscar por nombre de estación o descripción (Algolia)...">
+                </div>
+                <button type="submit" class="btn" style="margin-left:0.75rem;">Buscar</button>
+            </form>
             <div class="stats" style="font-size: 0.875rem; color: #64748b; font-weight: 500;">
                 @Model.Count() incidencias listadas
             </div>

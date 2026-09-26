@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using PlataformaIncidencias.Models;
+using PlataformaIncidencias.Services;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,15 +10,18 @@ namespace PlataformaIncidencias.Data
 {
     public static class DataSeeder
     {
-        public static async Task SeedDataAsync(IServiceProvider serviceProvider, UserManager<IdentityUser> userManager)
+        public static async Task SeedDataAsync(
+            IServiceProvider serviceProvider,
+            UserManager<IdentityUser> userManager,
+            AlgoliaService algoliaService)
         {
             var context = serviceProvider.GetRequiredService<ApplicationDbContext>();
-            
-            // Crea la DB si no existe (ideal para Render + SQLite temporal)
+
+            // Crea la DB si no existe (ideal para Render + SQLite efímero)
             context.Database.EnsureCreated();
 
-            // GUID FIJO REQUERIDO (No usar aleatorios)
-            var fixedUserId = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"; 
+            // GUID FIJO — nunca aleatorio para evitar huérfanos en RabbitMQ tras reinicio
+            var fixedUserId = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d";
 
             if (!context.Users.Any(u => u.Id == fixedUserId))
             {
@@ -28,17 +32,16 @@ namespace PlataformaIncidencias.Data
                     Email = "supervisor@bicioperaciones.com",
                     EmailConfirmed = true
                 };
-                
-                // Password genérico para la prueba
                 await userManager.CreateAsync(user, "Admin123!");
             }
 
             if (!context.Incidencias.Any())
             {
-                context.Incidencias.AddRange(
+                var incidencias = new[]
+                {
                     new Incidencia
                     {
-                        Id = 101, 
+                        Id = 101,
                         Estacion = "Estación Central",
                         Descripcion = "Falla en el anclaje del slot 4 de bicicletas",
                         Prioridad = "Alta",
@@ -52,8 +55,13 @@ namespace PlataformaIncidencias.Data
                         Prioridad = "Media",
                         Estado = "Abierta"
                     }
-                );
+                };
+
+                context.Incidencias.AddRange(incidencias);
                 await context.SaveChangesAsync();
+
+                // Indexar en Algolia después de guardar en SQLite
+                await algoliaService.IndexarTodasAsync(incidencias);
             }
         }
     }

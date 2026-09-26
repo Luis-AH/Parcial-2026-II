@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using PlataformaIncidencias.Data;
+using PlataformaIncidencias.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,9 @@ builder.Services.AddControllersWithViews()
         options.JsonSerializerOptions.ReferenceHandler =
             System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
+
+// Algolia: registrado como Singleton (cliente HTTP reutilizable)
+builder.Services.AddSingleton<AlgoliaService>();
 
 var app = builder.Build();
 
@@ -64,7 +68,8 @@ using (var scope = app.Services.CreateScope())
 {
     var services    = scope.ServiceProvider;
     var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
-    await DataSeeder.SeedDataAsync(services, userManager);
+    var algolia = services.GetRequiredService<AlgoliaService>();
+    await DataSeeder.SeedDataAsync(services, userManager, algolia);
 }
 
 app.Run();
