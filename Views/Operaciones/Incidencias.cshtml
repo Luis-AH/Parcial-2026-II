@@ -76,8 +76,6 @@
 </div>
 
 @section Scripts {
-    <!-- Pusher JS SDK — compatible con PieSocket WebSockets -->
-    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script>
         // Búsqueda visual para ver el Empty State
         document.getElementById('search-input').addEventListener('input', function(e) {
@@ -140,24 +138,35 @@
             }, 400);
         }
 
-        // ---- Cliente PieSocket via SDK Pusher ----
-        const pusher = new Pusher('@pieSocketApiKey', {
-            cluster:          '@pieSocketCluster',
-            wsHost:           '@pieSocketCluster'+'.piesocket.com',
-            wsPort:           443,
-            wssPort:          443,
-            forceTLS:         true,
-            enabledTransports: ['ws', 'wss'],
-            disableStats:     true
-        });
+        // ---- Cliente PieSocket Nativo (Sin Pusher) ----
+        var canalReal = '@(Configuration["PieSocket:Channel"] ?? "incidencias-channel")';
+        var apiKey = '@pieSocketApiKey';
+        var clusterId = '@pieSocketCluster';
+        
+        var wsUrl = `wss://${clusterId}.piesocket.com/v3/${canalReal}?api_key=${apiKey}&notify_self=1`;
+        var socket = new WebSocket(wsUrl);
 
-        const channel = pusher.subscribe('incidencias-channel');
+        socket.onopen = function() {
+            console.log('[PIESOCKET] Conectado nativamente al canal:', canalReal);
+        };
 
-        channel.bind('IncidenciaActualizada', function(data) {
-            console.log('[PIESOCKET] Evento recibido:', data);
-            // Dependiendo del serializador JSON, puede llegar como Id o id
-            const incidenciaId = data.Id || data.id;
-            eliminarFila(incidenciaId);
-        });
+        socket.onmessage = function(event) {
+            console.log('[PIESOCKET] Mensaje crudo recibido:', event.data);
+            try {
+                var payload = JSON.parse(event.data);
+                
+                // PieSocket REST API encapsula el mensaje en la propiedad "event" y "data"
+                if (payload.event === "IncidenciaActualizada" && payload.data) {
+                    const incidenciaId = payload.data.Id || payload.data.id;
+                    eliminarFila(incidenciaId);
+                }
+            } catch(e) {
+                console.error('[PIESOCKET] Error al parsear mensaje:', e);
+            }
+        };
+
+        socket.onerror = function(error) {
+            console.error('[PIESOCKET] Error WebSocket:', error);
+        };
     </script>
 }

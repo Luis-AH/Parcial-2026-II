@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test 5 (V4)</h1>
+    <div id="log"></div>
+    <script>
+        const log = (msg) => document.getElementById('log').innerHTML += msg + '<br>';
+        
+        try {
+            var apiKey = 'jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO';
+            var clusterId = 'free.blr2';
+            
+            var wsUrl = `wss://${clusterId}.piesocket.com/v4/1?api_key=${apiKey}&notify_self=1`;
+            var socket = new WebSocket(wsUrl);
+
+            socket.onopen = function() {
+                log('CONNECTED NATIVELY V4');
+            };
+
+            socket.onmessage = function(event) {
+                log('MESSAGE V4: ' + event.data);
+            };
+        } catch (e) {
+            log('EXCEPTION: ' + e.message);
+        }
+    </script>
+</body>
+</html>

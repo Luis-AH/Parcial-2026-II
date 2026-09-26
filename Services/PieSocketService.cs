@@ -1,61 +1,60 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using PusherServer;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace PlataformaIncidencias.Services
 {
-    /// <summary>
-    /// Servicio para publicar eventos de tiempo real a través de PieSocket
-    /// usando el protocolo Pusher compatible.
-    /// API Key y Secret se manejan SOLO en servidor (nunca al frontend).
-    /// El cliente JS usará únicamente la ApiKey pública.
-    /// </summary>
     public class PieSocketService
     {
-        private readonly Pusher _pusher;
-        private readonly string _channel;
+        private readonly HttpClient _httpClient;
         private readonly ILogger<PieSocketService> _logger;
+        private readonly string _apiKey;
+        private readonly string _apiSecret;
+        private readonly string _clusterId;
+        private readonly string _channel;
 
         public PieSocketService(IConfiguration configuration, ILogger<PieSocketService> logger)
         {
             _logger = logger;
+            _httpClient = new HttpClient();
 
-            var appId     = configuration["PieSocket:AppId"]!;
-            var apiKey    = configuration["PieSocket:ApiKey"]!;
-            var apiSecret = configuration["PieSocket:ApiSecret"]!;
-            var clusterId = configuration["PieSocket:ClusterId"]!;  // free.blr2
-            _channel      = configuration["PieSocket:Channel"] ?? "incidencias-channel";
-
-            // PieSocket es compatible con Pusher:
-            // Host pattern: <clusterId>.piesocket.com
-            _pusher = new Pusher(appId, apiKey, apiSecret, new PusherOptions
-            {
-                HostName  = $"{clusterId}.piesocket.com",
-                Encrypted = true
-            });
+            _apiKey = configuration["PieSocket:ApiKey"] ?? string.Empty;
+            _apiSecret = configuration["PieSocket:ApiSecret"] ?? string.Empty;
+            _clusterId = configuration["PieSocket:ClusterId"] ?? "free.blr2";
+            _channel = configuration["PieSocket:Channel"] ?? "incidencias-channel";
         }
 
-        /// <summary>
-        /// Emite el evento "incidencia-cerrada" al canal de incidencias.
-        /// El payload se serializa en camelCase estricto para evitar errores en el cliente JS.
-        /// </summary>
         public async Task PublicarIncidenciaCerradaAsync(int id)
         {
-            // La rúbrica del examen pide explícitamente enviar "IncidenciaActualizada"
-            // y que el payload contenga "Id" y "Estado"
-            var payload = new { Id = id, Estado = "Cerrada" };
+            var url = $"https://{_clusterId}.piesocket.com/api/publish";
 
-            var result = await _pusher.TriggerAsync(
-                _channel,
-                "IncidenciaActualizada",
-                payload
-            );
+            var payload = new
+            {
+                key = _apiKey,
+                secret = _apiSecret,
+                roomId = _channel,
+                message = new {
+                    @event = "IncidenciaActualizada", // Ojo con la arroba porque event es palabra reservada
+                    data = new { Id = id, Estado = "Cerrada" }
+                }
+            };
 
-            _logger.LogInformation(
-                "[PIESOCKET] Evento 'IncidenciaActualizada' publicado para Id={Id}. Status={Status}",
-                id, result.StatusCode);
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(url, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[PIESOCKET] Evento 'IncidenciaActualizada' publicado exitosamente vía API REST.");
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _logger.LogError("[PIESOCKET] Error al publicar. Status: {Status}, Body: {Body}", response.StatusCode, body);
+            }
         }
     }
 }

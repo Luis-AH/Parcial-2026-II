@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test 4 (Native PieSocket)</h1>
+    <div id="log"></div>
+    <script>
+        const log = (msg) => document.getElementById('log').innerHTML += msg + '<br>';
+        
+        try {
+            var canalReal = 'incidencias-channel';
+            var apiKey = 'jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO';
+            var clusterId = 'free.blr2';
+            
+            var wsUrl = `wss://${clusterId}.piesocket.com/v3/${canalReal}?api_key=${apiKey}&notify_self=1`;
+            var socket = new WebSocket(wsUrl);
+
+            socket.onopen = function() {
+                log('CONNECTED NATIVELY');
+            };
+
+            socket.onmessage = function(event) {
+                log('MESSAGE: ' + event.data);
+            };
+
+            socket.onerror = function(error) {
+                log('ERROR NATIVE WSS');
+            };
+        } catch (e) {
+            log('EXCEPTION: ' + e.message);
+        }
+    </script>
+</body>
+</html>

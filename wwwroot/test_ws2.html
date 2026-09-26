@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Test 2</h1>
+    <div id="log"></div>
+    <script>
+        const log = (msg) => document.getElementById('log').innerHTML += msg + '<br>';
+        
+        try {
+            // Test 1: With cluster
+            Pusher.logToConsole = true;
+            const pusher1 = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
+                cluster: 'free.blr2',
+                wsHost: 'free.blr2.piesocket.com',
+                wsPort: 443,
+                wssPort: 443,
+                forceTLS: true,
+                enabledTransports: ['ws', 'wss'],
+                disableStats: true
+            });
+            pusher1.connection.bind('error', (err) => log('P1 ERROR: ' + JSON.stringify(err)));
+            
+            // Test 2: Without cluster
+            const pusher2 = new Pusher('jFcqhaByFMQp5iP05LgFlOwnBBWGJuFTcOflwHiO', {
+                wsHost: 'free.blr2.piesocket.com',
+                wsPort: 443,
+                wssPort: 443,
+                forceTLS: true,
+                enabledTransports: ['ws', 'wss'],
+                disableStats: true
+            });
+            pusher2.connection.bind('error', (err) => log('P2 ERROR: ' + JSON.stringify(err)));
+
+            pusher1.connection.bind('connected', () => log('P1 CONNECTED'));
+            pusher2.connection.bind('connected', () => log('P2 CONNECTED'));
+
+        } catch (e) {
+            log('EXCEPTION: ' + e.message);
+        }
+    </script>
+</body>
+</html>
