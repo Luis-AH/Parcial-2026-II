@@ -115,6 +115,10 @@
                     btn.textContent = "Cerrar";
                     btn.style.opacity = "1";
                     btn.disabled = false;
+                } else {
+                    // Fallback local inmediato: desaparece la fila de esta pestaña 
+                    // independientemente de si PieSocket notifica a las demás.
+                    eliminarFila(id);
                 }
             } catch (e) {
                 console.error(e);

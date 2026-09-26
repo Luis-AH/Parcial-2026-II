@@ -118,22 +118,37 @@ namespace PlataformaIncidencias.Controllers
                 incidencia.Estado = "Cerrada";
                 await _context.SaveChangesAsync();
 
+                // 1. Invalidar caché Redis
                 try
                 {
-                    // 1. Invalidar caché Redis
                     await _cache.RemoveAsync(CacheKey);
-                    // 2. Eliminar del índice Algolia
-                    await _algolia.EliminarDelIndiceAsync(id);
-                    // 3. Publicar evento WebSocket via PieSocket → todos los clientes actualizan su UI
-                    await _pieSocket.PublicarIncidenciaCerradaAsync(id);
-
-                    _logger.LogInformation(
-                        "[CERRAR] Id={Id}: BD cerrada, Redis invalidado, Algolia limpiado, PieSocket notificado.", id);
                 }
                 catch (System.Exception ex)
                 {
-                    _logger.LogError(ex, "[CERRAR] Error al notificar/limpiar servicios externos para la incidencia {Id}", id);
+                    _logger.LogError(ex, "[CERRAR] Error en Redis");
                 }
+
+                // 2. Eliminar del índice Algolia
+                try
+                {
+                    await _algolia.EliminarDelIndiceAsync(id);
+                }
+                catch (System.Exception ex)
+                {
+                    _logger.LogError(ex, "[CERRAR] Error en Algolia");
+                }
+
+                // 3. Publicar evento WebSocket via PieSocket
+                try
+                {
+                    await _pieSocket.PublicarIncidenciaCerradaAsync(id);
+                }
+                catch (System.Exception ex)
+                {
+                    _logger.LogError(ex, "[CERRAR] Error en PieSocket");
+                }
+
+                _logger.LogInformation("[CERRAR] Procesamiento de cierre completado para Id={Id}", id);
             }
             return Ok();
         }
